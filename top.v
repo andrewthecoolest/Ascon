@@ -68,7 +68,7 @@ module top #(
   // host_if: bytes <-> 128-bit registers
 
   wire [127:0] key, nonce, ad, data_in, tag_in;
-  wire [3:0] ad_len, data_len;  // in bytes, 0-15
+  wire [4:0] ad_len, data_len;  // in bytes, 0-16
   wire mode;  // 0 = encrypt, 1 = decrypt
   wire start;  // one-cycle pulse
   wire [127:0] data_out, tag_out;
