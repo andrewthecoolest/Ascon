@@ -1,0 +1,10 @@
+## vivado output
+.Xil/
+*.jou
+*.log
+*.str
+*.cache/
+*.runs/
+*.hw/
+*.ip_user_files/
+*.sim/

@@ -24,7 +24,7 @@ module top #(
     else rx_sync <= {rx_sync[0], rx_pin};
   wire rx = rx_sync[1];
 
-  // uart: 1-bit wire <-> 8-bit bytes
+  // uart: 8N1
 
   // baud tick
   localparam integer BaudDiv = ClkFreq / (16 * Baud);  // 13.02 at 24 MHz, 115200
@@ -65,7 +65,7 @@ module top #(
       .tx          (tx_pin)
   );
 
-  // host_if: bytes <-> 128-bit registers
+  // host_if
 
   wire [127:0] key, nonce, ad, data_in, tag_in;
   wire [4:0] ad_len, data_len;  // in bytes, 0-16
@@ -123,5 +123,18 @@ module top #(
   // busy should come straight from a flip-flop in the core, so the trigger
   // can't glitch
   assign trigger = busy;
+
+  // clk out to CW: 1 on rising edge, 0 on falling edge
+  ODDR #(
+      .DDR_CLK_EDGE("SAME_EDGE")
+  ) clk_fwd (
+      .Q (clk_out),
+      .C (clk),
+      .CE(1'b1),
+      .D1(1'b1),
+      .D2(1'b0),
+      .R (1'b0),
+      .S (1'b0)
+  );
 
 endmodule
