@@ -10,16 +10,25 @@ module top #(
     output wire clk_out   // clk out to CW
 );
 
-  // two flop sync for reset
+  // 100 MHz in, 24 MHz out
+  wire clk_24, locked;
+  clk_wiz_0 clk_gen (
+      .clk_in1 (clk),
+      .clk_out1(clk_24),
+      .locked  (locked)
+  );
+
+  // two flop sync for reset, held until clk_24 is stable
+  wire rst_in = rst_btn | ~locked;
   reg [1:0] rst_sync;
-  always @(posedge clk, posedge rst_btn)
-    if (rst_btn) rst_sync <= 2'b11;
+  always @(posedge clk_24, posedge rst_in)
+    if (rst_in) rst_sync <= 2'b11;
     else rst_sync <= {rst_sync[0], 1'b0};
   wire rst = rst_sync[1];
 
   // two flop sync for rx
   reg [1:0] rx_sync;
-  always @(posedge clk, posedge rst)
+  always @(posedge clk_24, posedge rst)
     if (rst) rx_sync <= 2'b11;
     else rx_sync <= {rx_sync[0], rx_pin};
   wire rx = rx_sync[1];
@@ -34,7 +43,7 @@ module top #(
       .N($clog2(BaudDiv)),  // turn BaudDiv into 2^N
       .M(BaudDiv)           // count up to BaudDiv
   ) baud_gen (
-      .clk     (clk),
+      .clk     (clk_24),
       .rst     (rst),
       .max_tick(tick)
   );
@@ -43,7 +52,7 @@ module top #(
   wire       rx_done;  // one-cycle pulse per received byte
 
   uart_rx receiver (
-      .clk         (clk),
+      .clk         (clk_24),
       .rst         (rst),
       .rx          (rx),
       .s_tick      (tick),
@@ -56,7 +65,7 @@ module top #(
   wire       tx_done;  // one-cycle pulse: byte is out
 
   uart_tx transmitter (
-      .clk         (clk),
+      .clk         (clk_24),
       .rst         (rst),
       .tx_start    (tx_start),
       .s_tick      (tick),
@@ -77,7 +86,7 @@ module top #(
   wire tag_ok;
 
   host_if host (
-      .clk     (clk),
+      .clk     (clk_24),
       .rst     (rst),
       .rx_data (rx_data),
       .rx_done (rx_done),
@@ -102,7 +111,7 @@ module top #(
   // crypto core: 128-bit registers in, 128-bit results out
 
   ascon_aead128 core (
-      .clk     (clk),
+      .clk     (clk_24),
       .rst     (rst),
       .key     (key),
       .nonce   (nonce),
@@ -129,7 +138,7 @@ module top #(
       .DDR_CLK_EDGE("SAME_EDGE")
   ) clk_fwd (
       .Q (clk_out),
-      .C (clk),
+      .C (clk_24),
       .CE(1'b1),
       .D1(1'b1),
       .D2(1'b0),
