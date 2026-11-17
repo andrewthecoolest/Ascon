@@ -4,13 +4,14 @@ module top #(
 ) (
     input  wire clk,      // basys3 clk
     input  wire rst_btn,  // btnC for now
+    input  wire nrst,     // from CW nRST, active low
     input  wire rx_pin,   // from CW TX
     output wire tx_pin,   // to CW RX
     output wire trigger,  // to CW TIO4
     output wire clk_out   // clk out to CW
 );
 
-  // 100 MHz in, 24 MHz out
+  // 100 MHz in, 24 MHz out,
   wire clk_24, locked;
   clk_wiz_0 clk_gen (
       .clk_in1 (clk),
@@ -19,7 +20,8 @@ module top #(
   );
 
   // two flop sync for reset, held until clk_24 is stable
-  wire rst_in = rst_btn | ~locked;
+  // CW resets the target by pulling nrst low
+  wire rst_in = rst_btn | ~nrst | ~locked;
   reg [1:0] rst_sync;
   always @(posedge clk_24, posedge rst_in)
     if (rst_in) rst_sync <= 2'b11;
@@ -129,8 +131,7 @@ module top #(
       .tag_ok  (tag_ok)
   );
 
-  // busy should come straight from a flip-flop in the core, so the trigger
-  // can't glitch
+  // active high
   assign trigger = busy;
 
   // clk out to CW: 1 on rising edge, 0 on falling edge

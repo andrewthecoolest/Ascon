@@ -10,6 +10,7 @@ set_property -dict { PACKAGE_PIN J1 IOSTANDARD LVCMOS33 } [get_ports clk_out]  ;
 set_property -dict { PACKAGE_PIN L2 IOSTANDARD LVCMOS33 } [get_ports tx_pin]   ;# JA2 to TIO1
 set_property -dict { PACKAGE_PIN J2 IOSTANDARD LVCMOS33 } [get_ports rx_pin]   ;# JA3 to TIO2
 set_property -dict { PACKAGE_PIN G2 IOSTANDARD LVCMOS33 } [get_ports trigger]  ;# JA4 to TIO4
+set_property -dict { PACKAGE_PIN H1 IOSTANDARD LVCMOS33 PULLUP TRUE } [get_ports nrst]  ;# JA7 to nRST
 
 ## usb uart, for testing without CW
 ## set_property -dict { PACKAGE_PIN B18 IOSTANDARD LVCMOS33 } [get_ports rx_pin]
@@ -17,6 +18,7 @@ set_property -dict { PACKAGE_PIN G2 IOSTANDARD LVCMOS33 } [get_ports trigger]  ;
 
 ## async, no timing needed
 set_false_path -from [get_ports rst_btn]
+set_false_path -from [get_ports nrst]
 set_false_path -from [get_ports rx_pin]
 set_false_path -to [get_ports tx_pin]
 set_false_path -to [get_ports trigger]
