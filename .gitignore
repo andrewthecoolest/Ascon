@@ -8,3 +8,10 @@
 *.hw/
 *.ip_user_files/
 *.sim/
+
+## python
+.venv/
+__pycache__/
+
+## captures
+traces/

@@ -1,0 +1,168 @@
+module top #(
+    parameter integer ClkFreq = 24_000_000,  // need to downgrade for CW
+    parameter integer Baud    = 115_200      // normal baud rate
+) (
+    input  wire clk,      // basys3 clk
+    input  wire rst_btn,  // btnC for now
+    input  wire nrst,     // from CW nRST, active low
+    input  wire rx_pin,   // from CW TX
+    output wire tx_pin,   // to CW RX
+    output wire trigger,  // to CW TIO4
+    output wire clk_out   // clk out to CW
+);
+
+  // 100 MHz in, 24 MHz out,
+  wire clk_24, locked;
+  clk_wiz_0 clk_gen (
+      .clk_in1 (clk),
+      .clk_out1(clk_24),
+      .locked  (locked)
+  );
+
+  // two flop sync for reset, held until clk_24 is stable
+  // CW resets the target by pulling nrst low
+  wire rst_in = rst_btn | ~nrst | ~locked;
+  reg [1:0] rst_sync;
+  always @(posedge clk_24, posedge rst_in)
+    if (rst_in) rst_sync <= 2'b11;
+    else rst_sync <= {rst_sync[0], 1'b0};
+  wire rst = rst_sync[1];
+
+  // two flop sync for rx
+  reg [1:0] rx_sync;
+  always @(posedge clk_24, posedge rst)
+    if (rst) rx_sync <= 2'b11;
+    else rx_sync <= {rx_sync[0], rx_pin};
+  wire rx = rx_sync[1];
+
+  // uart: 8N1
+
+  // baud tick
+  localparam integer BaudDiv = ClkFreq / (16 * Baud);  // 13.02 at 24 MHz, 115200
+  wire tick;
+
+  mod_m_counter #(
+      .N($clog2(BaudDiv)),  // turn BaudDiv into 2^N
+      .M(BaudDiv)           // count up to BaudDiv
+  ) baud_gen (
+      .clk     (clk_24),
+      .rst     (rst),
+      .max_tick(tick)
+  );
+
+  wire [7:0] rx_data;
+  wire       rx_done;  // one-cycle pulse per received byte
+
+  uart_rx receiver (
+      .clk         (clk_24),
+      .rst         (rst),
+      .rx          (rx),
+      .s_tick      (tick),
+      .rx_done_tick(rx_done),
+      .dout        (rx_data)
+  );
+
+  wire [7:0] tx_data;
+  wire       tx_start;  // one-cycle pulse: send tx_data
+  wire       tx_done;  // one-cycle pulse: byte is out
+
+  uart_tx transmitter (
+      .clk         (clk_24),
+      .rst         (rst),
+      .tx_start    (tx_start),
+      .s_tick      (tick),
+      .din         (tx_data),
+      .tx_done_tick(tx_done),
+      .tx          (tx_pin)
+  );
+
+  // host_if
+
+  wire [255:0] key;  // 2 shares, share 0 is key[127:0]
+  wire [127:0] nonce, ad, data_in, tag_in;
+  wire [4:0] ad_len, data_len;  // in bytes, 0-16
+  wire mode;  // 0 = encrypt, 1 = decrypt
+  wire start;  // one-cycle pulse
+  wire [127:0] data_out, tag_out;
+  wire busy;  // high the whole time the core runs
+  wire done;  // one-cycle pulse when finished
+  wire tag_ok;
+  wire [319:0] seed;
+  wire seed_load;  // one-cycle pulse when seed is in
+
+  host_if host (
+      .clk      (clk_24),
+      .rst      (rst),
+      .rx_data  (rx_data),
+      .rx_done  (rx_done),
+      .tx_data  (tx_data),
+      .tx_start (tx_start),
+      .tx_done  (tx_done),
+      .key      (key),
+      .nonce    (nonce),
+      .ad       (ad),
+      .ad_len   (ad_len),
+      .data_in  (data_in),
+      .data_len (data_len),
+      .tag_in   (tag_in),
+      .mode     (mode),
+      .start    (start),
+      .seed     (seed),
+      .seed_load(seed_load),
+      .data_out (data_out),
+      .tag_out  (tag_out),
+      .done     (done),
+      .tag_ok   (tag_ok)
+  );
+
+  // prng: fresh randomness for the masks, new every cycle
+
+  wire [319:0] z;
+
+  prng rng (
+      .clk (clk_24),
+      .rst (rst),
+      .load(seed_load),
+      .seed(seed),
+      .z   (z)
+  );
+
+  // crypto core: 128-bit registers in, 128-bit results out
+
+  ascon_aead128 core (
+      .clk     (clk_24),
+      .rst     (rst),
+      .key     (key),
+      .nonce   (nonce),
+      .ad      (ad),
+      .ad_len  (ad_len),
+      .data_in (data_in),
+      .data_len(data_len),
+      .tag_in  (tag_in),
+      .mode    (mode),
+      .start   (start),
+      .z       (z),
+      .data_out(data_out),
+      .tag_out (tag_out),
+      .busy    (busy),
+      .done    (done),
+      .tag_ok  (tag_ok)
+  );
+
+  // active high
+  assign trigger = busy;
+
+  // clk out to CW: 1 on rising edge, 0 on falling edge
+  ODDR #(
+      .DDR_CLK_EDGE("SAME_EDGE")
+  ) clk_fwd (
+      .Q (clk_out),
+      .C (clk_24),
+      .CE(1'b1),
+      .D1(1'b1),
+      .D2(1'b0),
+      .R (1'b0),
+      .S (1'b0)
+  );
+
+endmodule
